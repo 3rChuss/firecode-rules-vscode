@@ -14,6 +14,12 @@
 		},
 		{
 			"include": "#comments"
+		},
+		{
+			"include": "#global-objects"
+		},
+		{
+			"include": "#constants"
 		}
 	],
 	"repository": {
@@ -35,11 +41,15 @@
 		},
 		"type-primitive": {
 			"name": "support.type.primitive.fs",
-			"match": "\\b(bool|bytes|constraint|duration|float|int|latlng|list|number|map|string|timestamp|path|request)\\b"
+			"match": "\\b(bool|bytes|constraint|duration|float|int|latlng|list|number|map|string|timestamp|path|request|vector)\\b"
 		},
 		"type-builtin-literals": {
 			"name": "support.type.builtin.fs",
 			"match": "\\b(true|false|null|undefined)\\b"
+		},
+		"global-objects": {
+			"name": "support.class.fs",
+			"match": "\\b(math|hashing|debug)\\b"
 		},
 		"version": {
 			"name": "comment.block.documentation.fs",
@@ -275,7 +285,7 @@
 		},
 		"operators": {
 			"name": "keyword.operator.firestorerules",
-			"match": "(==|!=|&&|is(?= )|\\|{2}|<=|>=|<|>|!)"
+			"match": "(==|!=|&&|is(?= )|in(?= )|\\|{2}|<=|>=|<|>|!)"
 		},
 		"strings": {
 			"patterns": [
