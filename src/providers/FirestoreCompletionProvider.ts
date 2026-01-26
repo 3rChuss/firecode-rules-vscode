@@ -16,6 +16,16 @@ import { tokenize } from "../utils/textmate/textmate";
 import { GLOBAL_DEFS, SIMPLE_KEYWORDS } from "./FirestoreGlobalProvider";
 
 const DOC_TREES: Documentation[] = [keywordDoc, methodDoc];
+const TYPE_METHOD_MAP: Record<string, string> = {
+  "rules.String": "string",
+  "rules.List": "list",
+  "rules.Map": "map",
+  "rules.Bytes": "bytes",
+  "rules.Duration": "duration",
+  "rules.Timestamp": "timestamp",
+  "rules.Path": "path",
+  "rules.firestore.Resource": "resource",
+};
 
 export class FirestoreCompletionProvider implements CompletionItemProvider {
   async provideCompletionItems(
@@ -27,23 +37,47 @@ export class FirestoreCompletionProvider implements CompletionItemProvider {
       .text.slice(0, position.character);
 
     const { segments, partial, hasDot } = parsePath(linePrefix);
+    const normalizedSegments = normalizeSegments(segments, DOC_TREES, hasDot);
+    if (hasDot && normalizedSegments.length === 0) {
+      // Dotted access with no resolvable root should not fall back to globals.
+      return [];
+    }
     const tokens = await tokenize(document);
     const token = tokenAtPosition(tokens, position);
     const scope = token?.scopes?.[token.scopes.length - 1] ?? "source.firebase";
 
-    if (hasDot && segments.length > 0) {
-      const baseNode = resolveNode(segments, DOC_TREES);
-      if (baseNode?.childs) {
+    if (hasDot && normalizedSegments.length > 0) {
+      const { node: deepestNode, resolvedSegments } = resolveDeepest(
+        normalizedSegments,
+        DOC_TREES,
+      );
+      const fullMatch =
+        deepestNode?.childs &&
+        resolvedSegments.length === normalizedSegments.length;
+      if (fullMatch) {
         const items = buildItemsFromChilds(
-          baseNode.childs,
-          segments.join("."),
+          deepestNode!.childs!,
+          normalizedSegments.join("."),
           partial,
         );
         if (items.length > 0) {
           return items;
         }
       }
-      // If we are in a dotted access but found no children, avoid suggesting root keywords/globals.
+
+      const returnType = inferReturnType(deepestNode);
+      const typeChilds = getTypeChilds(returnType);
+      if (typeChilds) {
+        const items = buildItemsFromChilds(
+          typeChilds,
+          normalizedSegments.join("."),
+          partial,
+        );
+        if (items.length > 0) {
+          return items;
+        }
+      }
+      // If we are in a dotted access but found no children or type-based methods, avoid suggesting root keywords/globals.
       return [];
     }
 
@@ -114,6 +148,50 @@ function buildCompletionItem(
   return item;
 }
 
+function inferReturnType(info?: DocumentationValue): string | undefined {
+  if (!info?.header) return undefined;
+  const header = info.header;
+  const returnsMatch = header.match(/returns\s+(?:non-null\s+)?([\w\.]+)/i);
+  if (returnsMatch?.[1]) return returnsMatch[1];
+  const arrowMatch = header.match(/=>\s*([\w\.]+)/);
+  if (arrowMatch?.[1]) return arrowMatch[1];
+  return undefined;
+}
+
+function getTypeChilds(typeName?: string): Documentation | undefined {
+  if (!typeName) return undefined;
+  const mapped = TYPE_METHOD_MAP[typeName];
+  if (!mapped) return undefined;
+  const node = methodDoc[mapped];
+  return node?.childs;
+}
+
+function normalizeSegments(
+  segments: string[],
+  docsList: Documentation[],
+  hasDot: boolean,
+): string[] {
+  const segs = [...segments];
+  while (segs.length > 0 && !rootExists(segs[0], docsList, hasDot)) {
+    segs.shift();
+  }
+  return segs;
+}
+
+function rootExists(
+  root: string,
+  docsList: Documentation[],
+  hasDot: boolean,
+): boolean {
+  return docsList.some((d) => {
+    const node = d[root];
+    if (!node) return false;
+    if (!hasDot) return true;
+    // For dotted access, require roots that can actually continue (have children).
+    return Boolean(node.childs);
+  });
+}
+
 function parsePath(
   prefix: string,
 ): {
@@ -121,19 +199,22 @@ function parsePath(
   partial: string;
   hasDot: boolean;
 } {
-  const match = prefix.match(/([A-Za-z0-9_.]+)\s*$/);
+  const trimmed = prefix.trimEnd();
+  const endsWithDot = trimmed.endsWith(".");
+  const withoutTrailingDot = endsWithDot ? trimmed.slice(0, -1) : trimmed;
+  // Drop simple trailing call arguments so we can still resolve the path after a function call.
+  const sanitized = withoutTrailingDot.replace(/\([^()]*\)/g, "");
+
+  const match = sanitized.match(/([A-Za-z0-9_.]+)\s*$/);
   if (!match) {
-    return { segments: [], partial: "", hasDot: false };
+    return { segments: [], partial: "", hasDot: endsWithDot };
   }
 
   const raw = match[1];
-  const hasDot = raw.includes(".");
-  const trimmed = raw.trimEnd();
-  const endsWithDot = trimmed.endsWith(".");
-  const parts = trimmed.split(".");
+  const parts = raw.split(".");
+  const hasDot = endsWithDot || raw.includes(".");
 
   if (endsWithDot) {
-    parts.pop();
     return { segments: parts, partial: "", hasDot };
   }
 
@@ -156,33 +237,41 @@ function contains(token: Token, position: Position): boolean {
   );
 }
 
-function resolveNode(
+function resolveDeepest(
   path: string[],
   docsList: Documentation[],
-): DocumentationValue | undefined {
+): { node?: DocumentationValue; resolvedSegments: string[] } {
+  let best: { node?: DocumentationValue; resolvedSegments: string[] } = {
+    node: undefined,
+    resolvedSegments: [],
+  };
+
   for (const docs of docsList) {
     let current: DocumentationValue | undefined = docs[path[0]];
     if (!current) {
       continue;
     }
+    let resolvedCount = 1;
 
-    let valid = true;
     for (let i = 1; i < path.length; i++) {
       if (!current.childs) {
-        valid = false;
         break;
       }
-      current = current.childs[path[i]];
-      if (!current) {
-        valid = false;
+      const next = current.childs[path[i]];
+      if (!next) {
         break;
       }
+      current = next;
+      resolvedCount++;
     }
 
-    if (valid) {
-      return current;
+    if (resolvedCount > best.resolvedSegments.length) {
+      best = {
+        node: current,
+        resolvedSegments: path.slice(0, resolvedCount),
+      };
     }
   }
 
-  return undefined;
+  return best;
 }
