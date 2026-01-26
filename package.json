@@ -4,14 +4,13 @@
 	"description": "Firestore Security Rules Syntax Highlighting and Suggestions",
 	"publisher": "ChFlick",
 	"author": {
-		"name": "Christoph Flick",
-		"url": "https://christophflick.de/",
-		"email": "hi+removethisforspamreasons@christophflick.de"
+		"name": "3rChuss",
+		"url": "https://github.com/3rChuss"
 	},
 	"license": "MIT",
 	"icon": "resources/firecode.png",
-	"version": "1.2.11",
-	"homepage": "https://github.com/ChFlick/firecode/blob/master/README.md",
+	"version": "1.3.0",
+	"homepage": "https://github.com/3rChuss/firecode/blob/master/README.md",
 	"keywords": [
 		"firebase",
 		"firestore",
@@ -19,10 +18,10 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/ChFlick/firecode"
+		"url": "https://github.com/3rChuss/firecode"
 	},
 	"bugs": {
-		"url": "https://github.com/ChFlick/firecode/issues"
+		"url": "https://github.com/3rChuss/firecode/issues"
 	},
 	"galleryBanner": {
 		"color": "#FFCA49",
@@ -65,8 +64,7 @@
 			"properties": {
 				"firestorerules.usePrettierFormatter": {
 					"type": "boolean",
-					"default": false,
-					"markdownDescription": "Use the new [firestore prettier plugin](https://github.com/ChFlick/prettier-plugin-firestore-rules) for formatting. **Experimental**"
+					"default": true
 				}
 			}
 		}
